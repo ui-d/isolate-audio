@@ -1,7 +1,7 @@
-// netlify/functions/audio-isolation.js
-const fetch = require('node-fetch');
+// netlify/functions/audio-isolation.mjs
+import fetch from 'node-fetch';
 
-exports.handler = async function (event, context) {
+export async function handler(event, context) {
   // Check if the method is POST
   if (event.httpMethod !== 'POST') {
     return {
@@ -51,14 +51,7 @@ exports.handler = async function (event, context) {
     const responseData = await response.blob();
 
     // Convert the response blob to base64
-    const reader = new FileReader();
-    reader.readAsDataURL(responseData);
-    const base64Response = await new Promise((resolve, reject) => {
-      reader.onloadend = () => {
-        resolve(reader.result.split(',')[1]);
-      };
-      reader.onerror = reject;
-    });
+    const base64Response = await blobToBase64(responseData);
 
     return {
       statusCode: 200,
@@ -71,4 +64,15 @@ exports.handler = async function (event, context) {
       body: JSON.stringify({ message: 'Internal Server Error' }),
     };
   }
-};
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      resolve(reader.result.split(',')[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}

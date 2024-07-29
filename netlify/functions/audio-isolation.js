@@ -1,5 +1,7 @@
 const axios = require('axios');
 const Formidable = require('formidable');
+const FormData = require('form-data');
+const fs = require('fs');
 
 exports.handler = async (event, context) => {
   if (event.httpMethod !== 'POST') {
@@ -10,10 +12,16 @@ exports.handler = async (event, context) => {
     };
   }
 
+  // Parse the multipart form data
   const form = new Formidable.IncomingForm();
 
   return new Promise((resolve, reject) => {
-    form.parse(event, async (err, fields, files) => {
+    const buffer = Buffer.from(event.body, 'base64');
+    const req = new require('stream').Readable();
+    req.push(buffer);
+    req.push(null);
+
+    form.parse(req, async (err, fields, files) => {
       if (err) {
         console.error('Error parsing form data:', err);
         return resolve({
@@ -29,7 +37,7 @@ exports.handler = async (event, context) => {
 
         // Prepare the form data for ElevenLabs API
         const formData = new FormData();
-        formData.append('audio', require('fs').createReadStream(audioFile.path), {
+        formData.append('audio', fs.createReadStream(audioFile.path), {
           filename: audioFile.name,
           contentType: audioFile.type,
         });

@@ -19,7 +19,7 @@ exports.handler = async (event, context) => {
     form.append('audio', Buffer.from(audioFile, 'base64'), 'audio.mp3');
 
     // Call the ElevenLabs API
-    const response = await axios.post('https://api.elevenlabs.io/v1/audio/isolate', form, {
+    const response = await axios.post('https://api.elevenlabs.io/v1/audio-isolation', form, {
       headers: {
         ...form.getHeaders(),
         'xi-api-key': process.env.ELEVENLABS_API_KEY,

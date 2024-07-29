@@ -2,8 +2,7 @@ const axios = require('axios');
 const Busboy = require('busboy');
 const FormData = require('form-data');
 const fs = require('fs');
-const { promisify } = require('util');
-const pipeline = promisify(require('stream').pipeline);
+const { Writable } = require('stream');
 
 exports.handler = async (event, context) => {
   if (event.httpMethod !== 'POST') {
@@ -14,7 +13,7 @@ exports.handler = async (event, context) => {
     };
   }
 
-  const busboy = new Busboy({
+  const busboy = Busboy({
     headers: {
       'content-type': event.headers['content-type'],
     },
@@ -23,15 +22,20 @@ exports.handler = async (event, context) => {
   let audioFile;
 
   return new Promise((resolve, reject) => {
+    const buffers = [];
+
     busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
       const saveTo = `/tmp/${filename}`;
-      file.pipe(fs.createWriteStream(saveTo));
+      audioFile = {
+        path: saveTo,
+        name: filename,
+        type: mimetype,
+      };
+      const writeStream = fs.createWriteStream(saveTo);
+      file.pipe(writeStream);
+      file.on('data', (data) => buffers.push(data));
       file.on('end', () => {
-        audioFile = {
-          path: saveTo,
-          name: filename,
-          type: mimetype,
-        };
+        writeStream.end();
       });
     });
 
@@ -72,11 +76,17 @@ exports.handler = async (event, context) => {
     });
 
     const buffer = Buffer.from(event.body, 'base64');
-    const req = new require('stream').Readable();
-    req.push(buffer);
-    req.push(null);
+    const req = new Writable();
+    req._write = (chunk, encoding, next) => {
+      busboy.write(chunk, encoding, next);
+    };
+    req.on('finish', () => {
+      busboy.end();
+    });
+
     req.headers = event.headers;
 
-    req.pipe(busboy);
+    req.write(buffer);
+    req.end();
   });
 };

@@ -1,71 +1,36 @@
-import fetch from 'node-fetch';
-
-export async function handler(event, context) {
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      body: JSON.stringify({ message: 'Method Not Allowed' }),
+exports.handler = async (event) => {
+    const audioBase64 = event.queryStringParameters.audio;
+    const apiEndpoint = 'https://elevenlabs.io/docs/api-reference/audio-isolation';
+    const headers = {
+      'Content-Type': 'application/octet-stream',
+      'xi-api-key': process.env.ELEVENLABS_API_KEY,
     };
-  }
-
-  try {
-    const { audioBase64 } = JSON.parse(event.body);
-    if (!audioBase64) {
+  
+    try {
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers,
+        body: audioBase64,
+      });
+  
+      if (!response.ok) {
+        throw new Error(`Error calling ElevenLabs API: ${response.status}`);
+      }
+  
+      const blob = await response.blob();
+      const audioBase64Response = await blob.arrayBuffer().then((buffer) => {
+        return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+      });
+  
       return {
-        statusCode: 400,
-        body: JSON.stringify({ message: 'Bad Request: Missing audioBase64 field' }),
+        statusCode: 200,
+        body: JSON.stringify({ audioBase64: audioBase64Response }),
       };
-    }
-
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) {
+    } catch (error) {
+      console.error(error);
       return {
         statusCode: 500,
-        body: JSON.stringify({ message: 'Internal Server Error: Missing API key' }),
+        body: JSON.stringify({ error: 'Error processing audio file' }),
       };
     }
-
-    const response = await fetch('https://api.elevenlabs.io/v1/audio-isolation', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'xi-api-key': `${apiKey}`
-      },
-      body: JSON.stringify({
-        audio: audioBase64,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return {
-        statusCode: response.status,
-        body: JSON.stringify({ message: `Error from Eleven Labs API: ${errorText}` }),
-      };
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const base64Response = arrayBufferToBase64(arrayBuffer);
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ audioBase64: base64Response }),
-    };
-  } catch (error) {
-    console.error('Error processing request:', error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ message: 'Internal Server Error' }),
-    };
-  }
-}
-
-function arrayBufferToBase64(buffer) {
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
+  };

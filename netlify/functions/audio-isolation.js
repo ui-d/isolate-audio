@@ -1,7 +1,9 @@
 const axios = require('axios');
-const Formidable = require('formidable');
+const Busboy = require('busboy');
 const FormData = require('form-data');
 const fs = require('fs');
+const { promisify } = require('util');
+const pipeline = promisify(require('stream').pipeline);
 
 exports.handler = async (event, context) => {
   if (event.httpMethod !== 'POST') {
@@ -12,29 +14,29 @@ exports.handler = async (event, context) => {
     };
   }
 
-  // Parse the multipart form data
-  const form = new Formidable.IncomingForm();
+  const busboy = new Busboy({
+    headers: {
+      'content-type': event.headers['content-type'],
+    },
+  });
+
+  let audioFile;
 
   return new Promise((resolve, reject) => {
-    const buffer = Buffer.from(event.body, 'base64');
-    const req = new require('stream').Readable();
-    req.push(buffer);
-    req.push(null);
+    busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
+      const saveTo = `/tmp/${filename}`;
+      file.pipe(fs.createWriteStream(saveTo));
+      file.on('end', () => {
+        audioFile = {
+          path: saveTo,
+          name: filename,
+          type: mimetype,
+        };
+      });
+    });
 
-    form.parse(req, async (err, fields, files) => {
-      if (err) {
-        console.error('Error parsing form data:', err);
-        return resolve({
-          statusCode: 500,
-          body: JSON.stringify({ error: 'Failed to parse form data' }),
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
+    busboy.on('finish', async () => {
       try {
-        // Access the audio file
-        const audioFile = files.audio;
-
         // Prepare the form data for ElevenLabs API
         const formData = new FormData();
         formData.append('audio', fs.createReadStream(audioFile.path), {
@@ -68,5 +70,13 @@ exports.handler = async (event, context) => {
         });
       }
     });
+
+    const buffer = Buffer.from(event.body, 'base64');
+    const req = new require('stream').Readable();
+    req.push(buffer);
+    req.push(null);
+    req.headers = event.headers;
+
+    req.pipe(busboy);
   });
 };

@@ -31,7 +31,7 @@ exports.handler = async (event, context) => {
       url: 'https://api.elevenlabs.io/audio-isolation',
       headers: {
         ...form.getHeaders(),
-        'Authorization': `Bearer ${process.env.ELEVENLABS_API_KEY}`
+        'xi-api-key': `${process.env.ELEVENLABS_API_KEY}`
       },
       data: form
     });

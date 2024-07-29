@@ -1,26 +1,28 @@
 exports.handler = async (event) => {
     const audioBase64 = event.queryStringParameters.audio;
-    const apiEndpoint = 'https://elevenlabs.io/docs/api-reference/audio-isolation';
-    const headers = {
-      'Content-Type': 'application/octet-stream',
-      'xi-api-key': process.env.ELEVENLABS_API_KEY,
+    const apiEndpoint = 'https://api.elevenlabs.io/v1/audio-isolation';
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const form = new FormData();
+    form.append("audio", audioBase64);
+  
+    const options = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        'xi-api-key': apiKey,
+      },
+      body: form,
     };
   
     try {
-      const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers,
-        body: audioBase64,
-      });
+      const response = await fetch(apiEndpoint, options);
   
       if (!response.ok) {
         throw new Error(`Error calling ElevenLabs API: ${response.status}`);
       }
   
-      const blob = await response.blob();
-      const audioBase64Response = await blob.arrayBuffer().then((buffer) => {
-        return btoa(String.fromCharCode(...new Uint8Array(buffer)));
-      });
+      const responseJson = await response.json();
+      const audioBase64Response = await responseJson.audio;
   
       return {
         statusCode: 200,

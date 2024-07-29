@@ -16,7 +16,7 @@ exports.handler = async (event, context) => {
 
     // Prepare the form data
     const form = new FormData();
-    form.append('audio', Buffer.from(audioFile, 'base64'), 'audio.mp3');
+    form.append('audio', Buffer.from(audioFile, 'base64'), 'audio.mpeg');
 
     // Call the ElevenLabs API
     const response = await axios.post('https://api.elevenlabs.io/v1/audio-isolation', form, {

@@ -1,3 +1,4 @@
+// netlify/functions/audioIsolation.js
 const axios = require('axios');
 const FormData = require('form-data');
 
@@ -9,46 +10,35 @@ exports.handler = async (event, context) => {
     };
   }
 
-  const { audioFileUrl } = JSON.parse(event.body);
-
   try {
-    // Download the audio file from the given URL
-    const response = await axios({
-      method: 'GET',
-      url: audioFileUrl,
-      responseType: 'arraybuffer'
-    });
+    // Parse the incoming request body
+    const { audioFile } = JSON.parse(event.body);
 
-    const audioBuffer = Buffer.from(response.data, 'binary');
-
-    // Prepare form data for ElevenLabs API
+    // Prepare the form data
     const form = new FormData();
-    form.append('file', audioBuffer, { filename: 'audio.wav' });
+    form.append('audio', Buffer.from(audioFile, 'base64'), 'audio.mp3');
 
-    // Send the audio file to ElevenLabs API
-    const elevenLabsResponse = await axios({
-      method: 'POST',
-      url: 'https://api.elevenlabs.io/audio-isolation',
+    // Call the ElevenLabs API
+    const response = await axios.post('https://api.elevenlabs.io/v1/audio/isolate', form, {
       headers: {
         ...form.getHeaders(),
-        'xi-api-key': `${process.env.ELEVENLABS_API_KEY}`
+        'xi-api-key': process.env.ELEVENLABS_API_KEY,
       },
-      data: form
+      responseType: 'arraybuffer',
     });
 
-    // Convert the response to base64
-    const base64Audio = Buffer.from(elevenLabsResponse.data).toString('base64');
+    // Convert response data to base64
+    const base64Audio = Buffer.from(response.data).toString('base64');
 
-    // Return the base64 audio
     return {
       statusCode: 200,
-      body: JSON.stringify({ base64Audio }),
+      body: JSON.stringify({ audio: base64Audio }),
     };
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error isolating audio:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Internal Server Error' }),
+      body: JSON.stringify({ error: 'Failed to isolate audio' }),
     };
   }
 };

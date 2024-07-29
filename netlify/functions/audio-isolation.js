@@ -1,8 +1,6 @@
-// netlify/functions/audio-isolation.mjs
 import fetch from 'node-fetch';
 
 export async function handler(event, context) {
-  // Check if the method is POST
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
@@ -27,7 +25,6 @@ export async function handler(event, context) {
       };
     }
 
-    // Send the audio file to the Eleven Labs audio isolation API
     const response = await fetch('https://api.elevenlabs.io/v1/audio-isolation', {
       method: 'POST',
       headers: {
@@ -36,7 +33,6 @@ export async function handler(event, context) {
       },
       body: JSON.stringify({
         audio: audioBase64,
-        // Add any additional required parameters for the API here
       }),
     });
 
@@ -48,10 +44,8 @@ export async function handler(event, context) {
       };
     }
 
-    const responseData = await response.blob();
-
-    // Convert the response blob to base64
-    const base64Response = await blobToBase64(responseData);
+    const arrayBuffer = await response.arrayBuffer();
+    const base64Response = arrayBufferToBase64(arrayBuffer);
 
     return {
       statusCode: 200,
@@ -66,13 +60,12 @@ export async function handler(event, context) {
   }
 }
 
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      resolve(reader.result.split(',')[1]);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
 }

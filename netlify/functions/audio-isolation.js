@@ -1,5 +1,5 @@
 const axios = require('axios');
-const FormData = require('form-data');
+const Formidable = require('formidable');
 
 exports.handler = async (event, context) => {
   if (event.httpMethod !== 'POST') {
@@ -10,37 +10,55 @@ exports.handler = async (event, context) => {
     };
   }
 
-  try {
-    // Parse the incoming request body
-    const { audioFile } = JSON.parse(event.body);
+  const form = new Formidable.IncomingForm();
 
-    // Prepare the form data
-    const form = new FormData();
-    form.append('audio', Buffer.from(audioFile, 'base64'), 'audio.wav');
+  return new Promise((resolve, reject) => {
+    form.parse(event, async (err, fields, files) => {
+      if (err) {
+        console.error('Error parsing form data:', err);
+        return resolve({
+          statusCode: 500,
+          body: JSON.stringify({ error: 'Failed to parse form data' }),
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
 
-    // Call the ElevenLabs API
-    const response = await axios.post('https://api.elevenlabs.io/v1/audio-isolation', form, {
-      headers: {
-        ...form.getHeaders(),
-        'xi-api-key': process.env.ELEVENLABS_API_KEY, // Fetch the API key from environment variables
-      },
-      responseType: 'arraybuffer',
+      try {
+        // Access the audio file
+        const audioFile = files.audio;
+
+        // Prepare the form data for ElevenLabs API
+        const formData = new FormData();
+        formData.append('audio', require('fs').createReadStream(audioFile.path), {
+          filename: audioFile.name,
+          contentType: audioFile.type,
+        });
+
+        // Call the ElevenLabs API
+        const response = await axios.post('https://api.elevenlabs.io/v1/audio-isolation', formData, {
+          headers: {
+            ...formData.getHeaders(),
+            'xi-api-key': process.env.ELEVENLABS_API_KEY,
+          },
+          responseType: 'arraybuffer',
+        });
+
+        // Convert response data to base64
+        const base64Audio = Buffer.from(response.data).toString('base64');
+
+        return resolve({
+          statusCode: 200,
+          body: JSON.stringify({ audio: base64Audio }),
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (error) {
+        console.error('Error isolating audio:', error.message);
+        return resolve({
+          statusCode: 500,
+          body: JSON.stringify({ error: 'Failed to isolate audio', details: error.message }),
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
     });
-
-    // Convert response data to base64
-    const base64Audio = Buffer.from(response.data).toString('base64');
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ audio: base64Audio }),
-      headers: { 'Content-Type': 'application/json' },
-    };
-  } catch (error) {
-    console.error('Error isolating audio:', error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: 'Failed to isolate audio', details: error.message }),
-      headers: { 'Content-Type': 'application/json' },
-    };
-  }
+  });
 };

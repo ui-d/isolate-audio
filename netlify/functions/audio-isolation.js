@@ -1,92 +1,74 @@
-const axios = require('axios');
-const Busboy = require('busboy');
-const FormData = require('form-data');
-const fs = require('fs');
-const { Writable } = require('stream');
+// netlify/functions/audio-isolation.js
+const fetch = require('node-fetch');
 
-exports.handler = async (event, context) => {
+exports.handler = async function (event, context) {
+  // Check if the method is POST
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
-      body: JSON.stringify({ error: 'Method Not Allowed' }),
-      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Method Not Allowed' }),
     };
   }
 
-  const busboy = Busboy({
-    headers: {
-      'content-type': event.headers['content-type'],
-    },
-  });
-
-  let audioFile;
-
-  return new Promise((resolve, reject) => {
-    const buffers = [];
-
-    busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
-      const saveTo = `/tmp/${filename}`;
-      audioFile = {
-        path: saveTo,
-        name: filename,
-        type: mimetype,
+  try {
+    const { audioBase64 } = JSON.parse(event.body);
+    if (!audioBase64) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ message: 'Bad Request: Missing audioBase64 field' }),
       };
-      const writeStream = fs.createWriteStream(saveTo);
-      file.pipe(writeStream);
-      file.on('data', (data) => buffers.push(data));
-      file.on('end', () => {
-        writeStream.end();
-      });
+    }
+
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ message: 'Internal Server Error: Missing API key' }),
+      };
+    }
+
+    // Send the audio file to the Eleven Labs audio isolation API
+    const response = await fetch('https://api.elevenlabs.io/v1/audio-isolation', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'xi-api-key': `${apiKey}`
+      },
+      body: JSON.stringify({
+        audio: audioBase64,
+        // Add any additional required parameters for the API here
+      }),
     });
 
-    busboy.on('finish', async () => {
-      try {
-        // Prepare the form data for ElevenLabs API
-        const formData = new FormData();
-        formData.append('audio', fs.createReadStream(audioFile.path), {
-          filename: audioFile.name,
-          contentType: audioFile.type,
-        });
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        statusCode: response.status,
+        body: JSON.stringify({ message: `Error from Eleven Labs API: ${errorText}` }),
+      };
+    }
 
-        // Call the ElevenLabs API
-        const response = await axios.post('https://api.elevenlabs.io/v1/audio-isolation', formData, {
-          headers: {
-            ...formData.getHeaders(),
-            'xi-api-key': process.env.ELEVENLABS_API_KEY,
-          },
-          responseType: 'arraybuffer',
-        });
+    const responseData = await response.blob();
 
-        // Convert response data to base64
-        const base64Audio = Buffer.from(response.data).toString('base64');
-
-        return resolve({
-          statusCode: 200,
-          body: JSON.stringify({ audio: base64Audio }),
-          headers: { 'Content-Type': 'application/json' },
-        });
-      } catch (error) {
-        console.error('Error isolating audio:', error.message);
-        return resolve({
-          statusCode: 500,
-          body: JSON.stringify({ error: 'Failed to isolate audio', details: error.message }),
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
+    // Convert the response blob to base64
+    const reader = new FileReader();
+    reader.readAsDataURL(responseData);
+    const base64Response = await new Promise((resolve, reject) => {
+      reader.onloadend = () => {
+        resolve(reader.result.split(',')[1]);
+      };
+      reader.onerror = reject;
     });
 
-    const buffer = Buffer.from(event.body, 'base64');
-    const req = new Writable();
-    req._write = (chunk, encoding, next) => {
-      busboy.write(chunk, encoding, next);
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ audioBase64: base64Response }),
     };
-    req.on('finish', () => {
-      busboy.end();
-    });
-
-    req.headers = event.headers;
-
-    req.write(buffer);
-    req.end();
-  });
+  } catch (error) {
+    console.error('Error processing request:', error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ message: 'Internal Server Error' }),
+    };
+  }
 };

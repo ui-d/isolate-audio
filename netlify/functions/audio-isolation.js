@@ -1,4 +1,3 @@
-// netlify/functions/audioIsolation.js
 const axios = require('axios');
 const FormData = require('form-data');
 
@@ -6,7 +5,8 @@ exports.handler = async (event, context) => {
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
-      body: 'Method Not Allowed',
+      body: JSON.stringify({ error: 'Method Not Allowed' }),
+      headers: { 'Content-Type': 'application/json' },
     };
   }
 
@@ -22,7 +22,7 @@ exports.handler = async (event, context) => {
     const response = await axios.post('https://api.elevenlabs.io/v1/audio-isolation', form, {
       headers: {
         ...form.getHeaders(),
-        'xi-api-key': `ELEVENLABS_API_KEY`,
+        'xi-api-key': process.env.ELEVENLABS_API_KEY, // Fetch the API key from environment variables
       },
       responseType: 'arraybuffer',
     });
@@ -33,12 +33,14 @@ exports.handler = async (event, context) => {
     return {
       statusCode: 200,
       body: JSON.stringify({ audio: base64Audio }),
+      headers: { 'Content-Type': 'application/json' },
     };
   } catch (error) {
     console.error('Error isolating audio:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Failed to isolate audio' }),
+      body: JSON.stringify({ error: 'Failed to isolate audio', details: error.message }),
+      headers: { 'Content-Type': 'application/json' },
     };
   }
 };
